@@ -9,6 +9,7 @@ A comprehensive [Cursor](https://cursor.com) agent skill for managing Azure Cosm
 | `SKILL.md` | Main skill instructions — account, database, container, document CRUD, throughput, queries |
 | `reference.md` | Advanced operations — composite indexes, unique keys, TTL, stored procs, triggers, UDFs, backup/restore, RBAC, networking, monitoring, multi-region, SQL query reference |
 | `scripts/cosmos-auth.py` | Helper script to generate Cosmos DB REST API HMAC-SHA256 authorization headers |
+| `accounts.local.json` | **Local only (gitignored)** — stores saved Cosmos DB account URLs and keys for quick reuse |
 
 ## Installation
 

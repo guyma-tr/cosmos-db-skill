@@ -20,6 +20,63 @@ Manages Azure Cosmos DB resources using the Azure CLI (`az cosmosdb`).
 
 ---
 
+## Saved Accounts (Local Credentials Store)
+
+The file `accounts.local.json` (in this skill's directory) stores known Cosmos DB account credentials locally so you don't need to look them up every time. **This file is gitignored and never pushed to GitHub.**
+
+### File location
+
+The file path is: `{this skill's directory}/accounts.local.json`
+
+Resolve the skill directory from the SKILL.md path. For example if SKILL.md is at `~/.cursor/skills/cosmos-db-skill/SKILL.md`, then the file is at `~/.cursor/skills/cosmos-db-skill/accounts.local.json`.
+
+### Format
+
+```json
+[
+  {
+    "alias": "my-service-int",
+    "accountName": "int-my-cosmos-account",
+    "url": "https://int-my-cosmos-account.documents.azure.com/",
+    "key": "<primary-master-key>",
+    "region": "West Europe",
+    "environment": "integration",
+    "service": "my-service-name"
+  }
+]
+```
+
+Each entry has:
+
+| Field | Required | Description |
+|---|---|---|
+| `alias` | Yes | Short unique name for quick lookup (e.g. `marketplace-int`, `payments-stg`) |
+| `accountName` | Yes | Cosmos DB account name |
+| `url` | Yes | Full Cosmos DB endpoint URL |
+| `key` | Yes | Primary master key for REST API auth |
+| `region` | No | Azure region |
+| `environment` | No | Environment name (integration, staging, production) |
+| `service` | No | Service/repo name this account belongs to |
+
+### Lookup Behavior
+
+**At the start of every operation**, before asking the user for account details:
+
+1. **Read** `accounts.local.json` from this skill's directory.
+2. **Match** the user's request against `alias`, `accountName`, `service`, or `environment` fields. Use fuzzy matching — e.g. if the user says "marketplace int", match an entry with `service: "marketplace-applications-api"` and `environment: "integration"`.
+3. **If a match is found**, use the stored `url` and `key` directly — skip asking for account name, resource group, or key.
+4. **If no match is found**, proceed normally (ask the user or fetch from Azure CLI / Key Vault / etcd).
+
+### Adding New Accounts
+
+When you successfully retrieve a new Cosmos DB account URL + key (from Key Vault, etcd, Azure CLI, or the user provides them), **automatically append** the entry to `accounts.local.json` so it's remembered for next time. Ask the user for a short alias, or generate one from `{service}-{environment}` (e.g. `marketplace-applications-api-int`).
+
+### Listing Saved Accounts
+
+When the user asks to list, show, or view saved accounts, read and display `accounts.local.json` as a table. **Never display the full key** — show only the first 8 characters followed by `...`.
+
+---
+
 ## Prerequisites Check
 
 **Run these checks automatically at the start of EVERY invocation, before doing anything else.**
@@ -187,6 +244,10 @@ Azure CLI does not have built-in document-level CRUD commands. Use the Cosmos DB
 
 ### Getting the Key
 
+**Preferred:** Look up the account in `accounts.local.json` (see Saved Accounts above). Use the stored `key` and `url` directly.
+
+**Fallback** (if not in saved accounts):
+
 ```bash
 ACCOUNT_KEY=$(az cosmosdb keys list --name {accountName} --resource-group {resourceGroup} --query primaryMasterKey -o tsv)
 ```
@@ -195,6 +256,8 @@ ACCOUNT_KEY=$(az cosmosdb keys list --name {accountName} --resource-group {resou
 ```powershell
 $ACCOUNT_KEY = az cosmosdb keys list --name {accountName} --resource-group {resourceGroup} --query primaryMasterKey -o tsv
 ```
+
+After retrieving a key via fallback, save it to `accounts.local.json` for future use.
 
 ### REST API Base URL
 
