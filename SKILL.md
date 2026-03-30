@@ -37,6 +37,7 @@ Resolve the skill directory from the SKILL.md path. For example if SKILL.md is a
   {
     "alias": "my-service-int",
     "accountName": "int-my-cosmos-account",
+    "resourceGroup": "int-infra-rg",
     "url": "https://int-my-cosmos-account.documents.azure.com/",
     "key": "<primary-master-key>",
     "region": "West Europe",
@@ -52,6 +53,7 @@ Each entry has:
 |---|---|---|
 | `alias` | Yes | Short unique name for quick lookup (e.g. `marketplace-int`, `payments-stg`) |
 | `accountName` | Yes | Cosmos DB account name |
+| `resourceGroup` | No | Azure resource group (saves a lookup for control-plane CLI commands) |
 | `url` | Yes | Full Cosmos DB endpoint URL |
 | `key` | Yes | Primary master key for REST API auth |
 | `region` | No | Azure region |
@@ -64,8 +66,9 @@ Each entry has:
 
 1. **Read** `accounts.local.json` from this skill's directory.
 2. **Match** the user's request against `alias`, `accountName`, `service`, or `environment` fields. Use fuzzy matching — e.g. if the user says "marketplace int", match an entry with `service: "marketplace-applications-api"` and `environment: "integration"`.
-3. **If a match is found**, use the stored `url` and `key` directly — skip asking for account name, resource group, or key.
+3. **If a match is found**, use the stored `url`, `key`, `resourceGroup`, and `accountName` directly — skip asking for these values.
 4. **If no match is found**, proceed normally (ask the user or fetch from Azure CLI / Key Vault / etcd).
+5. **Backfill missing fields**: If a match is found but some optional fields are missing (e.g. `resourceGroup`), and you discover them during the operation, update the entry in `accounts.local.json`.
 
 ### Adding New Accounts
 
