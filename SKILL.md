@@ -348,6 +348,8 @@ curl -s -X DELETE "https://{accountName}.documents.azure.com/dbs/{databaseName}/
 
 ### Query Documents
 
+**Simple queries (non-aggregate, or single-partition):**
+
 ```bash
 AUTH=$(python3 scripts/cosmos-auth.py --verb post --resource-type docs --resource-link "dbs/{databaseName}/colls/{containerName}" --key "$ACCOUNT_KEY")
 DATE=$(echo "$AUTH" | head -1)
@@ -363,7 +365,60 @@ curl -s -X POST "https://{accountName}.documents.azure.com/dbs/{databaseName}/co
   -d '{"query": "{sqlQuery}", "parameters": []}'
 ```
 
-Cross-partition queries are enabled by default via the header above.
+### Cross-Partition Aggregate Queries (COUNT, SUM, AVG, MIN, MAX, GROUP BY)
+
+The Cosmos DB REST gateway **cannot directly execute** cross-partition aggregate queries. It returns a `BadRequest` with `additionalErrorInfo` containing a `rewrittenQuery` and partition range info. You must fan out the query yourself.
+
+**Procedure:**
+
+1. **Get partition key ranges** for the container:
+
+```bash
+AUTH=$(python3 scripts/cosmos-auth.py --verb get --resource-type pkranges --resource-link "dbs/{databaseName}/colls/{containerName}" --key "$ACCOUNT_KEY")
+DATE=$(echo "$AUTH" | head -1)
+TOKEN=$(echo "$AUTH" | tail -1)
+
+curl -s "https://{accountName}.documents.azure.com/dbs/{databaseName}/colls/{containerName}/pkranges" \
+  -H "Authorization: $TOKEN" \
+  -H "x-ms-date: $DATE" \
+  -H "x-ms-version: 2018-12-31"
+```
+
+Parse `PartitionKeyRanges[].id` from the response to get range IDs (e.g. `"0"`, `"1"`, ...).
+
+2. **Use the rewritten query** from the gateway error, or rewrite manually:
+
+| Original query | Rewritten query |
+|---|---|
+| `SELECT VALUE COUNT(1) FROM c` | `SELECT VALUE [{"item": COUNT(1)}] FROM c` |
+| `SELECT COUNT(1) AS cnt FROM c` | `SELECT VALUE [{"item": COUNT(1)}] FROM c` |
+| `SELECT VALUE SUM(c.amount) FROM c` | `SELECT VALUE [{"item": SUM(c.amount)}] FROM c` |
+
+3. **Execute the rewritten query against each partition range** using the `x-ms-documentdb-partitionkeyrangeid` header instead of the cross-partition header:
+
+```bash
+AUTH=$(python3 scripts/cosmos-auth.py --verb post --resource-type docs --resource-link "dbs/{databaseName}/colls/{containerName}" --key "$ACCOUNT_KEY")
+DATE=$(echo "$AUTH" | head -1)
+TOKEN=$(echo "$AUTH" | tail -1)
+
+curl -s -X POST "https://{accountName}.documents.azure.com/dbs/{databaseName}/colls/{containerName}/docs" \
+  -H "Authorization: $TOKEN" \
+  -H "x-ms-date: $DATE" \
+  -H "x-ms-version: 2018-12-31" \
+  -H "Content-Type: application/query+json" \
+  -H "x-ms-documentdb-isquery: True" \
+  -H "x-ms-documentdb-partitionkeyrangeid: {rangeId}" \
+  -d '{"query": "{rewrittenQuery}", "parameters": []}'
+```
+
+4. **Aggregate results** client-side: sum the `item` values across all partition ranges for COUNT/SUM, take min/max for MIN/MAX, compute weighted average for AVG.
+
+**PowerShell note:** Write the query JSON to a temp file and use `@path` to avoid escaping issues:
+
+```powershell
+Set-Content -Path "$env:TEMP\cosmos-query.json" -Value '{"query": "SELECT VALUE [{\"item\": COUNT(1)}] FROM c", "parameters": []}' -Encoding UTF8
+# then use -d "@$env:TEMP\cosmos-query.json" in the curl call
+```
 
 ---
 
