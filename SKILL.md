@@ -420,6 +420,23 @@ Set-Content -Path "$env:TEMP\cosmos-query.json" -Value '{"query": "SELECT VALUE 
 # then use -d "@$env:TEMP\cosmos-query.json" in the curl call
 ```
 
+**C# / .NET note:** When building query JSON bodies in C#, **always use `JsonSerializer.Serialize`** — never use manual string interpolation with `$"{{...}}"`. The curly-brace escaping interacts badly with JSON and causes `SC1001: Syntax error, incorrect syntax near '{'` from Cosmos DB.
+
+Correct:
+```csharp
+var queryBody = JsonSerializer.Serialize(new
+{
+    query = $"SELECT c.name FROM c WHERE c.id = {someId}",
+    parameters = Array.Empty<object>()
+});
+var content = new StringContent(queryBody, Encoding.UTF8, "application/query+json");
+```
+
+Wrong (causes SC1001):
+```csharp
+var queryJson = $"{{\"query\":\"SELECT c.name FROM c WHERE c.id = {someId}\",\"parameters\":[]}}";
+```
+
 ---
 
 ## Throughput Management
