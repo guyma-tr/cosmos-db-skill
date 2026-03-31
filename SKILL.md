@@ -429,12 +429,26 @@ var queryBody = JsonSerializer.Serialize(new
     query = $"SELECT c.name FROM c WHERE c.id = {someId}",
     parameters = Array.Empty<object>()
 });
-var content = new StringContent(queryBody, Encoding.UTF8, "application/query+json");
+request.Content = new StringContent(queryBody);
+request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/query+json");
 ```
 
-Wrong (causes SC1001):
+Two common mistakes that both cause `SC1001: Syntax error, incorrect syntax near '{'`:
+
+1. **Manual string interpolation** — use `JsonSerializer.Serialize` instead:
 ```csharp
+// WRONG — curly brace escaping breaks JSON
 var queryJson = $"{{\"query\":\"SELECT c.name FROM c WHERE c.id = {someId}\",\"parameters\":[]}}";
+```
+
+2. **`StringContent` with charset** — Cosmos DB rejects `application/query+json; charset=utf-8` and falls back to parsing the body as raw SQL:
+```csharp
+// WRONG — adds "; charset=utf-8" which breaks Cosmos
+new StringContent(queryBody, Encoding.UTF8, "application/query+json");
+
+// CORRECT — set Content-Type without charset
+request.Content = new StringContent(queryBody);
+request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/query+json");
 ```
 
 ---
